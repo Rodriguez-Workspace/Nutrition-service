@@ -1,0 +1,19 @@
+[core]
+	repositoryformatversion = 0
+	filemode = false
+	bare = false
+	logallrefupdates = true
+	symlinks = false
+	ignorecase = true
+[remote "origin"]
+	url = https://github.com/1ASI0657-6339-Fund-Arq-Soft/Appointments-service
+	fetch = +refs/heads/*:refs/remotes/origin/*
+[branch "main"]
+	remote = origin
+	merge = refs/heads/main
+	vscode-merge-base = origin/main
+[branch "develop"]
+	remote = origin
+	merge = refs/heads/develop
+	github-pr-base-branch = "1ASI0657-6339-Fund-Arq-Soft#Appointments-service#main"
+	vscode-merge-base = origin/develop
