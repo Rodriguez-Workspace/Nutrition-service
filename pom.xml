@@ -12,10 +12,10 @@
 	</parent>
 
 	<groupId>pe.edu.upc.center</groupId>
-	<artifactId>agecare-center-platform</artifactId>
+	<artifactId>nutrition-service</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
-	<name>agecare-center-platform</name>
-	<description>Demo project for Spring Boot</description>
+	<name>nutrition-service</name>
+	<description>Nutrition Service for Senior Hub Platform</description>
 
 	<licenses>
 		<license/>
