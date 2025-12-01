@@ -1,61 +1,123 @@
-name: Deploy to Azure Container Apps
+name: CI/CD Pipeline - Nutrition Service
 
 on:
   push:
     branches: [ main ]
-  workflow_dispatch:
+  pull_request:
+    branches: [ main ]
 
 env:
-  AZURE_CONTAINER_APP: nutrition-service
-  RESOURCE_GROUP: seniorhub-rg
-  
+  ACR_NAME: seniorhubacr
+  ACR_REGISTRY: seniorhubacr.azurecr.io
+  APP_NAME: nutrition-service
+  RESOURCE_GROUP: rg-seniorhub
+  CONTAINER_APP_ENV: seniorhub-env
+
 jobs:
-  build-and-deploy:
+  # CI Job - Build, Test, and Package
+  ci:
     runs-on: ubuntu-latest
     
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-    
-    - name: Set up Java 21
+
+    - name: Set up JDK 21
       uses: actions/setup-java@v4
       with:
         java-version: '21'
         distribution: 'temurin'
-    
+
     - name: Cache Maven dependencies
       uses: actions/cache@v3
       with:
         path: ~/.m2
-        key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
-        restore-keys: ${{ runner.os }}-m2
-    
-    - name: Build with Maven
+        key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+        restore-keys: |
+          ${{ runner.os }}-maven-
+
+    - name: Run tests
+      run: mvn clean test
+
+    - name: Build application
       run: mvn clean package -DskipTests
+
+    - name: Login to Azure Container Registry
+      uses: azure/docker-login@v1
+      with:
+        login-server: ${{ env.ACR_REGISTRY }}
+        username: ${{ secrets.ACR_USERNAME }}
+        password: ${{ secrets.ACR_PASSWORD }}
+
+    - name: Build Docker image
+      run: |
+        docker build -t ${{ env.ACR_REGISTRY }}/${{ env.APP_NAME }}:latest .
+        docker build -t ${{ env.ACR_REGISTRY }}/${{ env.APP_NAME }}:${{ github.sha }} .
+
+    - name: Push Docker image
+      run: |
+        docker push ${{ env.ACR_REGISTRY }}/${{ env.APP_NAME }}:latest
+        docker push ${{ env.ACR_REGISTRY }}/${{ env.APP_NAME }}:${{ github.sha }}
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: jar-artifact
+        path: target/*.jar
+
+  # CD Job - Deploy to Azure Container Apps
+  cd:
+    needs: ci
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
     - name: Login to Azure
       uses: azure/login@v1
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
-    
-    - name: Login to Azure Container Registry
-      uses: azure/docker-login@v1
+
+    - name: Deploy Infrastructure
+      uses: azure/arm-deploy@v1
       with:
-        login-server: ${{ secrets.ACR_LOGIN_SERVER }}
-        username: ${{ secrets.ACR_USERNAME }}
-        password: ${{ secrets.ACR_PASSWORD }}
-    
-    - name: Build and push Docker image
-      run: |
-        docker build -t ${{ secrets.ACR_LOGIN_SERVER }}/nutrition:latest .
-        docker push ${{ secrets.ACR_LOGIN_SERVER }}/nutrition:latest
-    
+        subscriptionId: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        resourceGroupName: ${{ env.RESOURCE_GROUP }}
+        template: ./infrastructure/main.bicep
+        parameters: |
+          acrName=${{ env.ACR_NAME }}
+          containerAppName=${{ env.APP_NAME }}
+          containerAppEnvironmentName=${{ env.CONTAINER_APP_ENV }}
+          dbServerName=seniorhub-mysql
+          dbName=${{ secrets.DB_NAME }}
+          dbAdminLogin=${{ secrets.DB_USER }}
+          dbAdminPassword=${{ secrets.DB_PASSWORD }}
+
     - name: Deploy to Azure Container Apps
       uses: azure/container-apps-deploy-action@v1
       with:
-        appSourcePath: ${{ github.workspace }}
-        acrName: ${{ secrets.ACR_LOGIN_SERVER }}
-        containerAppName: ${{ env.AZURE_CONTAINER_APP }}
-        resourceGroup: ${{ env.RESOURCE_GROUP }}
-        imageToDeploy: ${{ secrets.ACR_LOGIN_SERVER }}/nutrition:latest
+        subscriptionId: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        resourceGroupName: ${{ env.RESOURCE_GROUP }}
+        containerAppName: ${{ env.APP_NAME }}
+        containerAppEnvironment: ${{ env.CONTAINER_APP_ENV }}
         targetPort: 8086
+        ingress: external
+        image: ${{ env.ACR_REGISTRY }}/${{ env.APP_NAME }}:${{ github.sha }}
+        revisionMode: single
+        environmentVariables: |
+          DB_HOST=${{ secrets.DB_HOST }}
+          DB_NAME=${{ secrets.DB_NAME }}
+          DB_USER=${{ secrets.DB_USER }}
+          DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+          DB_PORT=3306
+          SERVICES_IAM_URL=${{ secrets.SERVICES_IAM_URL }}
+          SERVICES_RESIDENTS_URL=${{ secrets.SERVICES_RESIDENTS_URL }}
+          SERVICES_USERS_URL=${{ secrets.SERVICES_USERS_URL }}
+          SERVICES_APPOINTMENTS_URL=${{ secrets.SERVICES_APPOINTMENTS_URL }}
+          SERVICES_NOTIFICATIONS_URL=${{ secrets.SERVICES_NOTIFICATIONS_URL }}
+          SERVICES_PAYMENTS_URL=${{ secrets.SERVICES_PAYMENTS_URL }}
+
+    - name: Logout from Azure
+      run: az logout

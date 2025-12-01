@@ -1,17 +1,43 @@
-# Usar una imagen base ligera con Java 21
-FROM eclipse-temurin:21-jdk-alpine
+# Multi-stage build for production optimization
+FROM maven:3.9.6-openjdk-21-slim AS builder
 
-# Crear directorio de trabajo
+# Set working directory
 WORKDIR /app
 
-# Copiar el JAR compilado desde Maven
-COPY target/*.jar app.jar
+# Copy pom.xml and download dependencies
+COPY pom.xml .
+RUN mvn dependency:go-offline
 
-# Exponer el puerto 8086
+# Copy source code
+COPY src ./src
+
+# Build the application
+RUN mvn clean package -DskipTests
+
+# Production stage
+FROM openjdk:21-jre-slim
+
+# Create non-root user for security
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+
+# Set working directory
+WORKDIR /app
+
+# Copy JAR from builder stage
+COPY --from=builder /app/target/*.jar app.jar
+
+# Change ownership to appuser
+RUN chown -R appuser:appuser /app
+
+# Switch to non-root user
+USER appuser
+
+# Expose port 8086 as defined in application.properties
 EXPOSE 8086
 
-# Configurar el puerto del servidor Spring Boot
-ENV SERVER_PORT=8086
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8086/actuator/health || exit 1
 
-# Punto de entrada para ejecutar la aplicación
-ENTRYPOINT ["java", "-Dserver.port=8086", "-jar", "app.jar"]
+# Define entrypoint
+ENTRYPOINT ["java", "-jar", "-Xmx512m", "-Xms256m", "app.jar"]

@@ -12,10 +12,10 @@
 	</parent>
 
 	<groupId>pe.edu.upc.center</groupId>
-	<artifactId>nutrition-service</artifactId>
+	<artifactId>agecare-center-platform</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
-	<name>nutrition-service</name>
-	<description>Nutrition Service for Senior Hub Platform</description>
+	<name>agecare-center-platform</name>
+	<description>Demo project for Spring Boot</description>
 
 	<licenses>
 		<license/>
@@ -102,6 +102,11 @@
 			<groupId>org.apache.commons</groupId>
 			<artifactId>commons-lang3</artifactId>
 			<version>3.12.0</version>
+		</dependency>
+		<!-- Spring Boot Actuator for health checks -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-actuator</artifactId>
 		</dependency>
 	</dependencies>
 
